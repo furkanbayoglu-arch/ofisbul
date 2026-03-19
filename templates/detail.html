@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ office.name }} | OfisArama v2{% endblock %}
+{% block title %}{{ office.name }} | OfisBul{% endblock %}
 
 {% block content %}
 
@@ -101,6 +101,26 @@
         {{ row("Mülkiyet", office.ownership) }}
       </div>
     </div>
+
+    {% if office.lat and office.lng %}
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden">
+      <div id="detail-map" style="height:220px;"></div>
+      <script>
+        (function() {
+          const m = L.map('detail-map', { zoomControl: true, scrollWheelZoom: false })
+            .setView([{{ office.lat }}, {{ office.lng }}], 14);
+          L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18
+          }).addTo(m);
+          L.circleMarker([{{ office.lat }}, {{ office.lng }}], {
+            radius: 10, fillColor: '#3b82f6', color: '#1d4ed8',
+            weight: 2, opacity: 1, fillOpacity: 0.9
+          }).addTo(m).bindPopup('<b>{{ office.name }}</b>').openPopup();
+        })();
+      </script>
+    </div>
+    {% endif %}
+
   </div>
 
 </div>

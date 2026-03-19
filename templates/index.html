@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}İstanbul Ofis Arama | OfisArama v2{% endblock %}
+{% block title %}İstanbul Ofis Arama | OfisBul{% endblock %}
 
 {% block content %}
 
 <!-- Hero -->
-<div class="text-center mb-10">
+<div class="text-center mb-8">
   <h1 class="text-4xl font-bold mb-2">İstanbul Ofis Veritabanı</h1>
-  <p class="text-slate-400">{{ total }} ofis binası &mdash; arama, filtreleme, karşılaştırma</p>
+  <p class="text-slate-400">{{ total }} ofis binası &mdash; arama, filtreleme, harita</p>
 </div>
 
-<!-- Search bar -->
-<div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 mb-8 shadow-lg">
+<!-- Search + Filters -->
+<div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 mb-6 shadow-lg">
   <div class="flex flex-col md:flex-row gap-3">
     <input
       id="search-input"
@@ -22,6 +22,7 @@
       hx-target="#office-grid"
       hx-include="#location-select, #search-input"
       name="search"
+      oninput="refreshMapPins()"
     />
     <select
       id="location-select"
@@ -31,29 +32,121 @@
       hx-trigger="change"
       hx-target="#office-grid"
       hx-include="#search-input, #location-select"
+      onchange="refreshMapPins()"
     >
       <option value="">Tüm Lokasyonlar</option>
       {% for loc in locations %}
       <option value="{{ loc }}">{{ loc }}</option>
       {% endfor %}
     </select>
-    <button
-      class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-3 rounded-xl transition"
-      hx-get="/htmx/offices"
-      hx-target="#office-grid"
-      hx-include="#search-input, #location-select"
-    >
-      Ara
-    </button>
+
+    <!-- View toggle -->
+    <div class="flex gap-2">
+      <button id="btn-list"
+        onclick="showView('list')"
+        class="px-4 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white transition">
+        ☰ Liste
+      </button>
+      <button id="btn-map"
+        onclick="showView('map')"
+        class="px-4 py-3 rounded-xl text-sm font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition">
+        🗺 Harita
+      </button>
+    </div>
   </div>
 </div>
 
-<!-- Results -->
-<div id="office-grid"
-  hx-get="/htmx/offices"
-  hx-trigger="load"
->
-  <div class="text-center text-slate-500 py-20">Yükleniyor...</div>
+<!-- List view -->
+<div id="view-list">
+  <div id="office-grid"
+    hx-get="/htmx/offices"
+    hx-trigger="load">
+    <div class="text-center text-slate-500 py-20">Yükleniyor...</div>
+  </div>
 </div>
+
+<!-- Map view -->
+<div id="view-map" class="hidden">
+  <div id="map" class="w-full rounded-2xl border border-slate-700 shadow-lg" style="height: 600px;"></div>
+</div>
+
+<script>
+  let map = null;
+  let markers = [];
+
+  function showView(view) {
+    const listEl = document.getElementById('view-list');
+    const mapEl  = document.getElementById('view-map');
+    const btnList = document.getElementById('btn-list');
+    const btnMap  = document.getElementById('btn-map');
+
+    if (view === 'map') {
+      listEl.classList.add('hidden');
+      mapEl.classList.remove('hidden');
+      btnList.className = 'px-4 py-3 rounded-xl text-sm font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition';
+      btnMap.className  = 'px-4 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white transition';
+      initMap();
+    } else {
+      mapEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+      btnList.className = 'px-4 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white transition';
+      btnMap.className  = 'px-4 py-3 rounded-xl text-sm font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition';
+    }
+  }
+
+  function initMap() {
+    if (map) { refreshMapPins(); return; }
+
+    map = L.map('map').setView([41.05, 29.01], 11);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 18
+    }).addTo(map);
+
+    refreshMapPins();
+  }
+
+  function refreshMapPins() {
+    if (!map) return;
+
+    const search   = document.getElementById('search-input').value;
+    const location = document.getElementById('location-select').value;
+
+    let url = '/api/v1/offices/map/pins';
+    const params = new URLSearchParams();
+    if (search)   params.set('search', search);
+    if (location) params.set('location', location);
+    if (params.toString()) url += '?' + params.toString();
+
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        markers.forEach(m => m.remove());
+        markers = [];
+
+        data.pins.forEach(office => {
+          const marker = L.circleMarker([office.lat, office.lng], {
+            radius: 8,
+            fillColor: '#3b82f6',
+            color: '#1d4ed8',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.85
+          }).addTo(map);
+
+          marker.bindPopup(`
+            <div style="min-width:180px">
+              <p style="font-weight:700;font-size:14px;margin-bottom:4px">${office.name}</p>
+              <p style="color:#94a3b8;font-size:12px;margin-bottom:6px">${office.location}</p>
+              ${office.asking_rent ? `<p style="color:#34d399;font-size:13px;font-weight:600">${office.asking_rent}</p>` : ''}
+              <a href="/ofis/${office.id}" style="display:inline-block;margin-top:8px;color:#60a5fa;font-size:12px">Detay →</a>
+            </div>
+          `);
+
+          markers.push(marker);
+        });
+      });
+  }
+</script>
 
 {% endblock %}

@@ -1,11 +1,11 @@
 """
-OfisArama v2 — FastAPI backend
-Clone DB: offices_clone.db (read-only for offices data)
+OfisBul — FastAPI backend
 """
 from fastapi import FastAPI, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from app.api_v1 import router as api_v1_router
 import sqlite3
 import os
 import re
@@ -13,7 +13,8 @@ import re
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "offices_clone.db")
 
-app = FastAPI(title="OfisArama v2", version="2.0.0")
+app = FastAPI(title="OfisBul API", version="1.0.0")
+app.include_router(api_v1_router)
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
