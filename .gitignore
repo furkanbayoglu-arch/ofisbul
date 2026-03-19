@@ -1,4 +1,4 @@
-offices_clone.db
+# offices_clone.db
 __pycache__/
 *.pyc
 .env
