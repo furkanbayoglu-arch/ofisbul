@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ office.name }} | OfisArama v2{% endblock %}
+
+{% block content %}
+
+<a href="/" class="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition">
+  ← Tüm ofisler
+</a>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+  <!-- Left: Images + Info -->
+  <div class="lg:col-span-2 space-y-6">
+
+    <!-- Images -->
+    <div class="grid grid-cols-1 gap-3">
+      {% if office.image_url %}
+      <img src="{{ office.image_url }}" alt="{{ office.name }}"
+           class="w-full rounded-2xl object-cover max-h-80"
+           onerror="this.style.display='none'" />
+      {% endif %}
+      {% if office.picture1_url or office.picture2_url %}
+      <div class="grid grid-cols-2 gap-3">
+        {% if office.picture1_url %}
+        <img src="{{ office.picture1_url }}" alt="{{ office.name }} 2"
+             class="w-full rounded-xl object-cover h-40"
+             onerror="this.style.display='none'" />
+        {% endif %}
+        {% if office.picture2_url %}
+        <img src="{{ office.picture2_url }}" alt="{{ office.name }} 3"
+             class="w-full rounded-xl object-cover h-40"
+             onerror="this.style.display='none'" />
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if not office.image_url and not office.picture1_url %}
+      <div class="w-full h-48 bg-slate-800 rounded-2xl flex items-center justify-center text-slate-500">
+        Görsel mevcut değil
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Description -->
+    {% if office.description %}
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-3 text-slate-200">Hakkında</h2>
+      <p class="text-slate-400 text-sm leading-relaxed">{{ office.description }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Tenants -->
+    {% if office.tenants %}
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-3 text-slate-200">Kiracılar</h2>
+      <p class="text-slate-400 text-sm">{{ office.tenants }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Extra fields by section -->
+    {% for section, fields in extra_sections.items() %}
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-4 text-slate-200">{{ section }}</h2>
+      <div class="grid grid-cols-2 gap-3">
+        {% for field in fields %}
+        <div class="bg-slate-800 rounded-xl px-4 py-3">
+          <p class="text-xs text-slate-500 mb-1">{{ field.label }}</p>
+          <p class="text-sm font-medium text-white">{{ field.value or '—' }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+  </div>
+
+  <!-- Right: Key data card -->
+  <div class="space-y-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 sticky top-20">
+      <h1 class="text-2xl font-bold mb-1">{{ office.name }}</h1>
+      <p class="text-blue-400 text-sm mb-6">{{ office.location }}</p>
+
+      <div class="space-y-3">
+        {% macro row(label, value, highlight=false) %}
+        {% if value %}
+        <div class="flex justify-between items-center py-2 border-b border-slate-800">
+          <span class="text-sm text-slate-400">{{ label }}</span>
+          <span class="text-sm font-medium {% if highlight %}text-emerald-400{% else %}text-white{% endif %}">{{ value }}</span>
+        </div>
+        {% endif %}
+        {% endmacro %}
+
+        {{ row("Kira Bedeli", office.asking_rent, highlight=true) }}
+        {{ row("Aidat", office.service_charge) }}
+        {{ row("GLA", office.gross_leasable_area) }}
+        {{ row("Kat Alanı", office.floor_size) }}
+        {{ row("Verimlilik", office.efficiency) }}
+        {{ row("Otopark", office.car_park_ratio) }}
+        {{ row("İnşaat Yılı", office.year_built) }}
+        {{ row("Sertifika", office.certificate) }}
+        {{ row("Teslim Tipi", office.delivery_type) }}
+        {{ row("Mülkiyet", office.ownership) }}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
