@@ -12,7 +12,6 @@
   <!-- Left: Images + Info -->
   <div class="lg:col-span-2 space-y-6">
 
-    <!-- Images -->
     <div class="grid grid-cols-1 gap-3">
       {% if office.image_url %}
       <img src="{{ office.image_url }}" alt="{{ office.name }}"
@@ -23,13 +22,11 @@
       <div class="grid grid-cols-2 gap-3">
         {% if office.picture1_url %}
         <img src="{{ office.picture1_url }}" alt="{{ office.name }} 2"
-             class="w-full rounded-xl object-cover h-40"
-             onerror="this.style.display='none'" />
+             class="w-full rounded-xl object-cover h-40" onerror="this.style.display='none'" />
         {% endif %}
         {% if office.picture2_url %}
         <img src="{{ office.picture2_url }}" alt="{{ office.name }} 3"
-             class="w-full rounded-xl object-cover h-40"
-             onerror="this.style.display='none'" />
+             class="w-full rounded-xl object-cover h-40" onerror="this.style.display='none'" />
         {% endif %}
       </div>
       {% endif %}
@@ -40,7 +37,6 @@
       {% endif %}
     </div>
 
-    <!-- Description -->
     {% if office.description %}
     <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6">
       <h2 class="text-lg font-semibold mb-3 text-slate-200">Hakkında</h2>
@@ -48,7 +44,6 @@
     </div>
     {% endif %}
 
-    <!-- Tenants -->
     {% if office.tenants %}
     <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6">
       <h2 class="text-lg font-semibold mb-3 text-slate-200">Kiracılar</h2>
@@ -56,7 +51,6 @@
     </div>
     {% endif %}
 
-    <!-- Extra fields by section -->
     {% for section, fields in extra_sections.items() %}
     <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6">
       <h2 class="text-lg font-semibold mb-4 text-slate-200">{{ section }}</h2>
@@ -73,7 +67,7 @@
 
   </div>
 
-  <!-- Right: Key data card -->
+  <!-- Right: Key data + Map -->
   <div class="space-y-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 sticky top-20">
       <h1 class="text-2xl font-bold mb-1">{{ office.name }}</h1>

@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ofisarama-v2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ofisarama_v2
+      POSTGRES_USER: ofisarama
+      POSTGRES_PASSWORD: ofisarama
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ofisarama -d ofisarama_v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

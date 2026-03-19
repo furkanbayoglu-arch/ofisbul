@@ -1,29 +1,17 @@
 """
-OfisBul API v1
+OfisArama API v1
 """
-from fastapi import APIRouter, Query, HTTPException
-import sqlite3, os
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "offices_clone.db")
+from app.db import get_session
+from app.models import Office, OfficeExtraValue
+from app.services import get_locations, get_office_by_id, search_offices, normalize
+
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
 
-TR_MAP = str.maketrans({
-    'ç': 'c', 'Ç': 'c', 'ğ': 'g', 'Ğ': 'g',
-    'ı': 'i', 'I': 'i', 'İ': 'i', 'ö': 'o',
-    'Ö': 'o', 'ş': 's', 'Ş': 's', 'ü': 'u', 'Ü': 'u',
-})
-
-def normalize(text: str) -> str:
-    return text.lower().translate(TR_MAP)
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# ── Offices list ─────────────────────────────────────────────────────────────
 
 @router.get("/offices")
 def list_offices(
@@ -31,141 +19,77 @@ def list_offices(
     location: str = Query("", description="İlçe filtresi"),
     page: int = Query(1, ge=1),
     per_page: int = Query(24, ge=1, le=100),
+    db: Session = Depends(get_session),
 ):
-    conn = get_db()
-    try:
-        params, conditions = [], []
+    total, offices = search_offices(db, search, location, page, per_page)
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": max(1, -(-total // per_page)),
+        "items": offices,
+    }
 
-        if location and location != "all":
-            conditions.append("UPPER(location) LIKE ?")
-            params.append(f"%{location.upper()}%")
-
-        if search:
-            norm = normalize(search)
-            conditions.append("""(
-                LOWER(name) LIKE ? OR LOWER(location) LIKE ? OR
-                LOWER(description) LIKE ? OR
-                LOWER(IFNULL(alias_names,'')) LIKE ? OR
-                LOWER(IFNULL(tenants,'')) LIKE ?
-            )""")
-            like = f"%{norm}%"
-            params.extend([like, like, like, like, like])
-
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        total = conn.execute(f"SELECT COUNT(*) FROM offices {where}", params).fetchone()[0]
-        offset = (page - 1) * per_page
-
-        rows = conn.execute(
-            f"""SELECT id, name, location, description, asking_rent, service_charge,
-                gross_leasable_area, floor_size, image_url, picture1_url,
-                delivery_type, lat, lng
-                FROM offices {where} ORDER BY name ASC LIMIT ? OFFSET ?""",
-            params + [per_page, offset]
-        ).fetchall()
-
-        return {
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "pages": max(1, -(-total // per_page)),
-            "items": [dict(r) for r in rows],
-        }
-    finally:
-        conn.close()
-
-
-# ── Office detail ─────────────────────────────────────────────────────────────
 
 @router.get("/offices/{office_id}")
-def get_office(office_id: int):
-    conn = get_db()
-    try:
-        row = conn.execute("SELECT * FROM offices WHERE id = ?", (office_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Ofis bulunamadı")
-        office = dict(row)
+def get_office(office_id: int, db: Session = Depends(get_session)):
+    office, extras = get_office_by_id(db, office_id)
+    if not office:
+        raise HTTPException(status_code=404, detail="Ofis bulunamadı")
+    return {"office": office, "extras": extras}
 
-        extras = conn.execute("""
-            SELECT ef.label, ef.key, ef.section, oev.value
-            FROM office_extra_values oev
-            JOIN extra_fields ef ON ef.id = oev.field_id
-            WHERE oev.office_id = ?
-            ORDER BY ef.section, ef.sort_order
-        """, (office_id,)).fetchall()
-
-        sections: dict = {}
-        for e in extras:
-            sec = e["section"] or "Diğer"
-            sections.setdefault(sec, []).append({"label": e["label"], "key": e["key"], "value": e["value"]})
-
-        return {"office": office, "extras": sections}
-    finally:
-        conn.close()
-
-
-# ── Map pins (lightweight) ────────────────────────────────────────────────────
 
 @router.get("/offices/map/pins")
 def map_pins(
-    location: str = Query("", description="İlçe filtresi"),
+    location: str = Query(""),
     search: str = Query(""),
+    db: Session = Depends(get_session),
 ):
-    """Harita için sadece id, name, lat, lng, asking_rent döner — hızlı yükleme için."""
-    conn = get_db()
-    try:
-        params, conditions = [], []
-        conditions.append("lat IS NOT NULL AND lng IS NOT NULL")
+    """Harita için hafif endpoint — sadece id, name, location, asking_rent, image_url, lat, lng."""
+    stmt = select(
+        Office.id, Office.name, Office.location,
+        Office.asking_rent, Office.image_url, Office.lat, Office.lng
+    ).where(Office.lat.is_not(None), Office.lng.is_not(None))
 
-        if location and location != "all":
-            conditions.append("UPPER(location) LIKE ?")
-            params.append(f"%{location.upper()}%")
+    if location and location != "all":
+        stmt = stmt.where(Office.location.ilike(f"%{location}%"))
 
-        if search:
-            norm = normalize(search)
-            conditions.append("""(
-                LOWER(name) LIKE ? OR LOWER(location) LIKE ? OR
-                LOWER(IFNULL(tenants,'')) LIKE ?
-            )""")
-            like = f"%{norm}%"
-            params.extend([like, like, like])
+    if search:
+        from sqlalchemy import or_
+        from app.services import normalized_column
+        term = f"%{normalize(search)}%"
+        stmt = stmt.where(or_(
+            normalized_column(Office.name).like(term),
+            normalized_column(Office.location).like(term),
+            normalized_column(Office.tenants).like(term),
+        ))
 
-        where = "WHERE " + " AND ".join(conditions)
-        rows = conn.execute(
-            f"SELECT id, name, location, asking_rent, image_url, lat, lng FROM offices {where} ORDER BY name",
-            params
-        ).fetchall()
-        return {"pins": [dict(r) for r in rows]}
-    finally:
-        conn.close()
+    rows = db.execute(stmt.order_by(Office.name)).all()
+    return {"pins": [
+        {"id": r.id, "name": r.name, "location": r.location,
+         "asking_rent": r.asking_rent, "image_url": r.image_url,
+         "lat": r.lat, "lng": r.lng}
+        for r in rows
+    ]}
 
-
-# ── Locations ─────────────────────────────────────────────────────────────────
 
 @router.get("/locations")
-def list_locations():
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT DISTINCT location FROM offices WHERE location IS NOT NULL ORDER BY location"
-        ).fetchall()
-        return [r[0] for r in rows]
-    finally:
-        conn.close()
+def list_locations(db: Session = Depends(get_session)):
+    return get_locations(db)
 
-
-# ── Stats ─────────────────────────────────────────────────────────────────────
 
 @router.get("/stats")
-def stats():
-    conn = get_db()
-    try:
-        total = conn.execute("SELECT COUNT(*) FROM offices").fetchone()[0]
-        locations = conn.execute("SELECT COUNT(DISTINCT location) FROM offices").fetchone()[0]
-        with_coords = conn.execute("SELECT COUNT(*) FROM offices WHERE lat IS NOT NULL").fetchone()[0]
-        return {
-            "total_offices": total,
-            "total_locations": locations,
-            "offices_with_coords": with_coords,
-        }
-    finally:
-        conn.close()
+def stats(db: Session = Depends(get_session)):
+    total = db.scalar(select(func.count()).select_from(Office)) or 0
+    locations = db.scalar(select(func.count(func.distinct(Office.location)))) or 0
+    enriched_count = db.scalar(
+        select(func.count(func.distinct(Office.id)))
+        .select_from(Office)
+        .join(OfficeExtraValue, OfficeExtraValue.office_id == Office.id, isouter=True)
+        .where(OfficeExtraValue.field_id.is_not(None))
+    ) or 0
+    return {
+        "total_offices": total,
+        "total_locations": locations,
+        "offices_with_extra_data": enriched_count,
+    }
