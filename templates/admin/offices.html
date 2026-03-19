@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Ofis Yönetimi | OfisArama v2{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-3xl font-bold text-white">Ofis Yönetimi</h1>
+    <p class="mt-2 text-sm text-slate-400">{{ total }} ofis içinde arama ve düzenleme.</p>
+  </div>
+  <a href="/admin" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white">
+    Panele Dön
+  </a>
+</div>
+
+<form method="get" action="/admin/offices" class="mb-6 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 md:flex-row">
+  <input type="text" name="q" value="{{ q }}" placeholder="Ofis adı, lokasyon, kiracı..."
+         class="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+  <button type="submit"
+          class="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500">
+    Ara
+  </button>
+</form>
+
+<div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+  <table class="min-w-full divide-y divide-slate-800 text-sm">
+    <thead class="bg-slate-950/60 text-left text-slate-400">
+      <tr>
+        <th class="px-4 py-3">Ofis</th>
+        <th class="px-4 py-3">Lokasyon</th>
+        <th class="px-4 py-3">Kira</th>
+        <th class="px-4 py-3">Kiracılar</th>
+        <th class="px-4 py-3 text-right">İşlem</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-800">
+      {% for office in offices %}
+      <tr class="hover:bg-slate-950/40">
+        <td class="px-4 py-3 font-medium text-white">{{ office.name }}</td>
+        <td class="px-4 py-3 text-slate-300">{{ office.location or '—' }}</td>
+        <td class="px-4 py-3 text-slate-300">{{ office.asking_rent or '—' }}</td>
+        <td class="max-w-xs truncate px-4 py-3 text-slate-400">{{ office.tenants or '—' }}</td>
+        <td class="px-4 py-3 text-right">
+          <a href="/admin/offices/{{ office.id }}" class="rounded-lg border border-blue-800 bg-blue-950/40 px-3 py-2 text-xs font-medium text-blue-300 transition hover:bg-blue-900/40">
+            Düzenle
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="px-4 py-8 text-center text-slate-500">Sonuç bulunamadı.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pages > 1 %}
+<div class="mt-6 flex items-center justify-center gap-3">
+  {% if page > 1 %}
+  <a href="/admin/offices?q={{ q }}&page={{ page - 1 }}" class="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200">Önceki</a>
+  {% endif %}
+  <span class="text-sm text-slate-400">Sayfa {{ page }} / {{ pages }}</span>
+  {% if page < pages %}
+  <a href="/admin/offices?q={{ q }}&page={{ page + 1 }}" class="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200">Sonraki</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
