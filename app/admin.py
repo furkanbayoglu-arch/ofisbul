@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Form, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -378,3 +378,20 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         db.commit()
         log_admin_action(db, admin_user, "office_update", "office", office.id)
         return RedirectResponse(url=f"/admin/offices/{office.id}?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+
+    @router.get("/openapi.json")
+    async def admin_openapi(request: Request, db: Session = Depends(get_session)):
+        from fastapi.openapi.utils import get_openapi
+        admin_user = get_admin_user(request, db)
+        if not admin_user or not admin_user.is_active or admin_user.role != "owner":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+        from app.main import app as main_app
+        return get_openapi(title=main_app.title, version=main_app.version, routes=main_app.routes)
+
+    @router.get("/api-docs", response_class=HTMLResponse)
+    async def admin_api_docs(request: Request, db: Session = Depends(get_session)):
+        from fastapi.openapi.docs import get_swagger_ui_html
+        admin_user = get_admin_user(request, db)
+        if not admin_user or not admin_user.is_active or admin_user.role != "owner":
+            return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
+        return get_swagger_ui_html(openapi_url="/admin/openapi.json", title="API Docs")
