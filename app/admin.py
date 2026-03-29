@@ -3,15 +3,16 @@ from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_session
-from app.models import AdminUser, AuditLog, Lead, Office
+from app.models import AdminUser, AuditLog, ExtraField, Lead, Office, OfficeExtraValue
 from app.security import verify_password
 from app.services import normalize
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+LEAD_STATUS_OPTIONS = ["new", "contacted", "qualified", "proposal", "won", "lost", "archived"]
 
 
 def get_admin_user(request: Request, db: Session) -> AdminUser | None:
@@ -43,6 +44,23 @@ def parse_optional_float(raw_value: str) -> float | None:
         return None
 
 
+def get_extra_field_sections(db: Session, office: Office) -> list[dict]:
+    fields = db.scalars(select(ExtraField).order_by(ExtraField.section.asc(), ExtraField.sort_order.asc(), ExtraField.label.asc())).all()
+    value_map = {item.field_id: item.value for item in office.extra_values}
+    sections: dict[str, list[dict]] = {}
+    for field in fields:
+        sections.setdefault(field.section or "Diğer", []).append(
+            {
+                "id": field.id,
+                "key": field.key,
+                "label": field.label,
+                "field_type": field.field_type,
+                "value": value_map.get(field.id, "") or "",
+            }
+        )
+    return [{"name": name, "fields": items} for name, items in sections.items()]
+
+
 def mount_admin_routes(templates: Jinja2Templates) -> None:
     @router.get("/login", response_class=HTMLResponse)
     async def admin_login_page(request: Request, db: Session = Depends(get_session)):
@@ -50,11 +68,9 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         if admin_user and admin_user.is_active:
             return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
         return templates.TemplateResponse(
-            "admin/login.html",
-            {
-                "request": request,
-                "error": None,
-            },
+            request=request,
+            name="admin/login.html",
+            context={"error": None},
         )
 
     @router.post("/login", response_class=HTMLResponse)
@@ -67,11 +83,9 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         admin_user = db.scalar(select(AdminUser).where(AdminUser.email == email.strip().lower()))
         if not admin_user or not admin_user.is_active or not verify_password(password, admin_user.password_hash):
             return templates.TemplateResponse(
-                "admin/login.html",
-                {
-                    "request": request,
-                    "error": "E-posta veya sifre hatali.",
-                },
+                request=request,
+                name="admin/login.html",
+                context={"error": "E-posta veya sifre hatali."},
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -99,15 +113,119 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         recent_logs = db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(20)).all()
         office_count = db.scalar(select(func.count()).select_from(Office)) or 0
         return templates.TemplateResponse(
-            "admin/dashboard.html",
-            {
-                "request": request,
+            request=request,
+            name="admin/dashboard.html",
+            context={
                 "admin_user": admin_user,
                 "recent_leads": recent_leads,
                 "recent_logs": recent_logs,
                 "office_count": office_count,
+                "lead_count": db.scalar(select(func.count()).select_from(Lead)) or 0,
             },
         )
+
+    @router.get("/leads", response_class=HTMLResponse)
+    async def admin_leads(
+        request: Request,
+        q: str = "",
+        status_filter: str = "",
+        page: int = 1,
+        db: Session = Depends(get_session),
+    ):
+        admin_user = get_admin_user(request, db)
+        if not admin_user or not admin_user.is_active:
+            return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
+
+        stmt = select(Lead).options(joinedload(Lead.office), joinedload(Lead.assigned_admin_user))
+        if q.strip():
+            term = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                func.lower(Lead.full_name).like(term) |
+                func.lower(Lead.email).like(term) |
+                func.lower(func.coalesce(Lead.company, "")).like(term)
+            )
+        if status_filter.strip():
+            stmt = stmt.where(Lead.status == status_filter.strip())
+
+        per_page = 25
+        total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        leads = db.execute(
+            stmt.order_by(Lead.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+        ).unique().scalars().all()
+        pages = max(1, -(-total // per_page))
+        admins = db.scalars(select(AdminUser).where(AdminUser.is_active.is_(True)).order_by(AdminUser.full_name.asc())).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/leads.html",
+            context={
+                "admin_user": admin_user,
+                "leads": leads,
+                "admins": admins,
+                "page": page,
+                "pages": pages,
+                "q": q,
+                "status_filter": status_filter,
+                "status_options": LEAD_STATUS_OPTIONS,
+                "total": total,
+            },
+        )
+
+    @router.get("/leads/{lead_id}", response_class=HTMLResponse)
+    async def admin_lead_edit(request: Request, lead_id: int, db: Session = Depends(get_session)):
+        admin_user = get_admin_user(request, db)
+        if not admin_user or not admin_user.is_active:
+            return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
+
+        lead = db.execute(
+            select(Lead)
+            .options(joinedload(Lead.office), joinedload(Lead.assigned_admin_user))
+            .where(Lead.id == lead_id)
+        ).unique().scalar_one_or_none()
+        if not lead:
+            return RedirectResponse(url="/admin/leads", status_code=status.HTTP_303_SEE_OTHER)
+
+        admins = db.scalars(select(AdminUser).where(AdminUser.is_active.is_(True)).order_by(AdminUser.full_name.asc())).all()
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/lead_edit.html",
+            context={
+                "admin_user": admin_user,
+                "lead": lead,
+                "admins": admins,
+                "status_options": LEAD_STATUS_OPTIONS,
+                "saved": request.query_params.get("saved") == "1",
+            },
+        )
+
+    @router.post("/leads/{lead_id}")
+    async def admin_lead_update(
+        request: Request,
+        lead_id: int,
+        status_value: str = Form(..., alias="status"),
+        assigned_admin_user_id: str = Form(""),
+        admin_notes: str = Form(""),
+        last_contacted_at: str = Form(""),
+        db: Session = Depends(get_session),
+    ):
+        admin_user = get_admin_user(request, db)
+        if not admin_user or not admin_user.is_active:
+            return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
+
+        lead = db.get(Lead, lead_id)
+        if not lead:
+            return RedirectResponse(url="/admin/leads", status_code=status.HTTP_303_SEE_OTHER)
+
+        lead.status = status_value if status_value in LEAD_STATUS_OPTIONS else lead.status
+        lead.admin_notes = admin_notes.strip() or None
+        lead.assigned_admin_user_id = int(assigned_admin_user_id) if assigned_admin_user_id.strip() else None
+        lead.last_contacted_at = datetime.fromisoformat(last_contacted_at) if last_contacted_at.strip() else None
+        lead.updated_at = datetime.now(timezone.utc)
+
+        db.add(lead)
+        db.commit()
+        log_admin_action(db, admin_user, "lead_update", "lead", lead.id)
+        return RedirectResponse(url=f"/admin/leads/{lead.id}?saved=1", status_code=status.HTTP_303_SEE_OTHER)
 
     @router.get("/offices", response_class=HTMLResponse)
     async def admin_offices(
@@ -142,9 +260,9 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         pages = max(1, -(-total // per_page))
 
         return templates.TemplateResponse(
-            "admin/offices.html",
-            {
-                "request": request,
+            request=request,
+            name="admin/offices.html",
+            context={
                 "admin_user": admin_user,
                 "offices": offices,
                 "page": page,
@@ -160,16 +278,21 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         if not admin_user or not admin_user.is_active:
             return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
 
-        office = db.get(Office, office_id)
+        office = db.execute(
+            select(Office)
+            .options(joinedload(Office.extra_values))
+            .where(Office.id == office_id)
+        ).unique().scalar_one_or_none()
         if not office:
             return RedirectResponse(url="/admin/offices", status_code=status.HTTP_303_SEE_OTHER)
 
         return templates.TemplateResponse(
-            "admin/office_edit.html",
-            {
-                "request": request,
+            request=request,
+            name="admin/office_edit.html",
+            context={
                 "admin_user": admin_user,
                 "office": office,
+                "extra_sections": get_extra_field_sections(db, office),
                 "saved": request.query_params.get("saved") == "1",
             },
         )
@@ -204,9 +327,15 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         if not admin_user or not admin_user.is_active:
             return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
 
-        office = db.get(Office, office_id)
+        office = db.execute(
+            select(Office)
+            .options(joinedload(Office.extra_values))
+            .where(Office.id == office_id)
+        ).unique().scalar_one_or_none()
         if not office:
             return RedirectResponse(url="/admin/offices", status_code=status.HTTP_303_SEE_OTHER)
+
+        form_data = await request.form()
 
         office.name = name.strip()
         office.location = location.strip() or None
@@ -228,6 +357,22 @@ def mount_admin_routes(templates: Jinja2Templates) -> None:
         office.picture2_url = picture2_url.strip() or None
         office.lat = parse_optional_float(lat)
         office.lng = parse_optional_float(lng)
+
+        existing_extra_map = {item.field_id: item for item in office.extra_values}
+        extra_fields = db.scalars(select(ExtraField)).all()
+        for field in extra_fields:
+            raw_value = form_data.get(f"extra__{field.key}")
+            if raw_value is None:
+                continue
+            cleaned_value = str(raw_value).strip()
+            existing_value = existing_extra_map.get(field.id)
+            if cleaned_value:
+                if existing_value:
+                    existing_value.value = cleaned_value
+                else:
+                    db.add(OfficeExtraValue(office_id=office.id, field_id=field.id, value=cleaned_value))
+            elif existing_value:
+                db.delete(existing_value)
 
         db.add(office)
         db.commit()
