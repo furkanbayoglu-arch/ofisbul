@@ -16,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.admin import mount_admin_routes, router as admin_router
 from app.api_v1 import router as api_v1_router
 from app.config import settings
-from app.db import Base, SessionLocal, engine, get_session
+from app.db import SessionLocal, get_session
 from app.models import AdminUser, Lead, Office
 from app.security import hash_password
 from app.services import get_locations, get_office_by_id, search_offices
@@ -31,7 +31,6 @@ app.include_router(api_v1_router)
 app.include_router(admin_router)
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-Base.metadata.create_all(bind=engine)
 
 
 def ensure_bootstrap_admin() -> None:
@@ -53,7 +52,6 @@ def ensure_bootstrap_admin() -> None:
         except IntegrityError:
             db.rollback()
 
-
 ensure_bootstrap_admin()
 
 
@@ -62,13 +60,18 @@ async def home(request: Request, db: Session = Depends(get_session)):
     total = db.scalar(select(func.count()).select_from(Office)) or 0
     locations = get_locations(db)
     return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
+        request=request,
+        name="index.html",
+        context={
             "total": total,
             "locations": locations,
         },
     )
+
+
+@app.get("/sebastian")
+async def sebastian_redirect():
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/ofis/{office_id}", response_class=HTMLResponse)
@@ -77,9 +80,9 @@ async def office_detail(request: Request, office_id: int, db: Session = Depends(
     if not office:
         raise HTTPException(status_code=404, detail="Ofis bulunamadı")
     return templates.TemplateResponse(
-        "detail.html",
-        {
-            "request": request,
+        request=request,
+        name="detail.html",
+        context={
             "office": office,
             "extra_sections": extra_sections,
             "lead_success": request.query_params.get("lead") == "ok",
@@ -134,9 +137,9 @@ async def htmx_offices(
     total, offices = search_offices(db, search, location, page, per_page)
     pages = max(1, -(-total // per_page))
     return templates.TemplateResponse(
-        "partials/office_grid.html",
-        {
-            "request": request,
+        request=request,
+        name="partials/office_grid.html",
+        context={
             "offices": offices,
             "total": total,
             "page": page,
