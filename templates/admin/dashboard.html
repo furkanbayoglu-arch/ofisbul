@@ -1,11 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Admin Paneli | OfisArama v2{% endblock %}
+{% block title %}Admin Paneli{% endblock %}
 
 {% block content %}
 <div class="mb-8 flex items-start justify-between gap-4">
   <div>
     <h1 class="text-3xl font-bold text-white">Admin Paneli</h1>
-    <p class="mt-2 text-sm text-slate-400">{{ admin_user.full_name }} olarak giriş yapıldı.</p>
+    <p class="mt-2 text-sm text-slate-400">
+      {{ admin_user.full_name }} olarak giriş yapıldı
+      <span class="ml-2 rounded-full border px-2 py-0.5 text-xs
+        {% if admin_user.role == 'owner' %}border-yellow-700 bg-yellow-950/40 text-yellow-300
+        {% else %}border-slate-700 bg-slate-800 text-slate-400{% endif %}">
+        {{ admin_user.role }}
+      </span>
+    </p>
   </div>
   <form method="post" action="/admin/logout">
     <button type="submit"
@@ -15,50 +22,76 @@
   </form>
 </div>
 
-<div class="mb-6 grid gap-4 sm:grid-cols-3">
+{% if error %}
+<div class="mb-4 rounded-xl border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">Yetkisiz erişim.</div>
+{% endif %}
+
+<!-- Stats cards -->
+<div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
   <a href="/admin/offices" class="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-600">
     <p class="text-sm text-slate-400">Ofis Yönetimi</p>
     <p class="mt-2 text-2xl font-bold text-white">{{ office_count }}</p>
     <p class="mt-2 text-xs text-slate-500">Listele ve düzenle</p>
   </a>
-  <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+  <a href="/admin/leads" class="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-600">
     <p class="text-sm text-slate-400">Lead Havuzu</p>
-    <p class="mt-2 text-2xl font-bold text-white">{{ recent_leads|length }}</p>
-    <p class="mt-2 text-xs text-slate-500">Son 20 kayıt gösteriliyor</p>
-  </div>
-  <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-    <p class="text-sm text-slate-400">Audit Akışı</p>
+    <p class="mt-2 text-2xl font-bold text-white">{{ lead_count }}</p>
+    <p class="mt-2 text-xs text-slate-500">Listele ve yönet</p>
+  </a>
+
+  {% if admin_user.role == 'owner' %}
+  <a href="/admin/logs" class="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-600">
+    <p class="text-sm text-slate-400">Audit Logları</p>
     <p class="mt-2 text-2xl font-bold text-white">{{ recent_logs|length }}</p>
-    <p class="mt-2 text-xs text-slate-500">Son 20 işlem gösteriliyor</p>
+    <p class="mt-2 text-xs text-slate-500">Tüm işlem geçmişi</p>
+  </a>
+  <a href="/admin/users" class="rounded-2xl border border-yellow-900/40 bg-slate-900 p-5 transition hover:border-yellow-700">
+    <p class="text-sm text-slate-400">Kullanıcı Yönetimi</p>
+    <p class="mt-2 text-2xl font-bold text-white">👑</p>
+    <p class="mt-2 text-xs text-slate-500">Admin ekle / yetkilendir</p>
+  </a>
+  {% else %}
+  <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm text-slate-400">Sistem</p>
+    <p class="mt-2 text-2xl font-bold text-white">OfisBul</p>
+    <p class="mt-2 text-xs text-slate-500">v2 — ofis yönetim paneli</p>
   </div>
+  <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5 opacity-40 cursor-not-allowed">
+    <p class="text-sm text-slate-400">Loglar & Kullanıcılar</p>
+    <p class="mt-2 text-2xl font-bold text-white">🔒</p>
+    <p class="mt-2 text-xs text-slate-500">Owner yetkisi gerekli</p>
+  </div>
+  {% endif %}
 </div>
 
-<div class="grid gap-6 lg:grid-cols-2">
+<!-- Recent leads (all admins can see) -->
+<div class="grid gap-6 {% if admin_user.role == 'owner' %}lg:grid-cols-2{% endif %}">
   <section class="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-    <h2 class="mb-4 text-lg font-semibold text-white">Son Lead’ler</h2>
+    <h2 class="mb-4 text-lg font-semibold text-white">Son Lead'ler</h2>
     <div class="space-y-3">
       {% for lead in recent_leads %}
-      <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+      <a href="/admin/leads/{{ lead.id }}" class="block rounded-xl border border-slate-800 bg-slate-950/60 p-4 hover:border-slate-600 transition">
         <div class="flex items-start justify-between gap-3">
           <div>
             <p class="font-medium text-white">{{ lead.full_name }}</p>
             <p class="text-sm text-slate-400">{{ lead.email }}{% if lead.phone %} • {{ lead.phone }}{% endif %}</p>
-            <p class="mt-1 text-xs text-slate-500">Ofis ID: {{ lead.office_id }}{% if lead.company %} • {{ lead.company }}{% endif %}</p>
+            <p class="mt-1 text-xs text-slate-500">Ofis #{{ lead.office_id }}{% if lead.company %} • {{ lead.company }}{% endif %}</p>
           </div>
-          <span class="rounded-full border border-blue-800 bg-blue-950/40 px-2 py-1 text-xs text-blue-300">{{ lead.status }}</span>
+          <span class="rounded-full border border-blue-800 bg-blue-950/40 px-2 py-1 text-xs text-blue-300 shrink-0">{{ lead.status }}</span>
         </div>
-        {% if lead.message %}
-        <p class="mt-3 text-sm text-slate-300">{{ lead.message }}</p>
-        {% endif %}
-      </div>
+      </a>
       {% else %}
       <p class="text-sm text-slate-500">Henüz lead yok.</p>
       {% endfor %}
     </div>
   </section>
 
+  {% if admin_user.role == 'owner' %}
   <section class="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-    <h2 class="mb-4 text-lg font-semibold text-white">Son İşlem Kayıtları</h2>
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-lg font-semibold text-white">Son İşlem Kayıtları</h2>
+      <a href="/admin/logs" class="text-xs text-slate-400 hover:text-white transition">Tümünü gör →</a>
+    </div>
     <div class="space-y-3">
       {% for log in recent_logs %}
       <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
@@ -73,5 +106,6 @@
       {% endfor %}
     </div>
   </section>
+  {% endif %}
 </div>
 {% endblock %}

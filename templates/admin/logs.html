@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Audit Logları | Admin{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex items-center justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Audit Logları</h1>
+    <p class="mt-1 text-sm text-slate-400">Toplam {{ total }} işlem kaydı.</p>
+  </div>
+  <a href="/admin" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-300 hover:text-white transition">← Panele Dön</a>
+</div>
+
+<div class="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-slate-800 text-left text-xs text-slate-500 uppercase tracking-wider">
+        <th class="px-4 py-3">Tarih</th>
+        <th class="px-4 py-3">Admin</th>
+        <th class="px-4 py-3">İşlem</th>
+        <th class="px-4 py-3">Varlık</th>
+        <th class="px-4 py-3">ID</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-800">
+      {% for log in logs %}
+      <tr class="hover:bg-slate-800/40 transition">
+        <td class="px-4 py-3 text-slate-400 whitespace-nowrap">{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="px-4 py-3 text-slate-300">{{ log.admin_user.full_name if log.admin_user else '—' }}</td>
+        <td class="px-4 py-3">
+          <span class="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-200">{{ log.action }}</span>
+        </td>
+        <td class="px-4 py-3 text-slate-400">{{ log.entity_type }}</td>
+        <td class="px-4 py-3 text-slate-500">{{ log.entity_id or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Log kaydı bulunamadı.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pages > 1 %}
+<div class="mt-6 flex gap-2 justify-center">
+  {% for p in range(1, pages + 1) %}
+  <a href="?page={{ p }}"
+     class="rounded-xl border px-3 py-1 text-sm transition
+            {% if p == page %}border-blue-600 bg-blue-600 text-white{% else %}border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500{% endif %}">
+    {{ p }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

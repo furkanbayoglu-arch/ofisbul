@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Kullanıcı Yönetimi | Admin{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex items-center justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Kullanıcı Yönetimi</h1>
+    <p class="mt-1 text-sm text-slate-400">Admin hesaplarını ekle, düzenle, yetkilendir.</p>
+  </div>
+  <a href="/admin" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-300 hover:text-white transition">← Panele Dön</a>
+</div>
+
+{% if saved %}
+<div class="mb-4 rounded-xl border border-green-700 bg-green-950/40 px-4 py-3 text-sm text-green-300">Kaydedildi.</div>
+{% endif %}
+{% if error %}
+<div class="mb-4 rounded-xl border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">{{ error }}</div>
+{% endif %}
+
+<!-- New user form -->
+<section class="mb-8 rounded-2xl border border-slate-700 bg-slate-900 p-6">
+  <h2 class="mb-4 text-lg font-semibold text-white">Yeni Admin Ekle</h2>
+  <form method="post" action="/admin/users/create" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <input name="full_name" required placeholder="Ad Soyad"
+           class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+    <input name="email" type="email" required placeholder="E-posta"
+           class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+    <input name="password" type="password" required placeholder="Şifre"
+           class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+    <div class="flex gap-2">
+      <select name="role"
+              class="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+        {% for r in role_options %}
+        <option value="{{ r }}">{{ r }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit"
+              class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 transition">
+        Ekle
+      </button>
+    </div>
+  </form>
+</section>
+
+<!-- Existing users -->
+<section class="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+  <h2 class="mb-4 text-lg font-semibold text-white">Mevcut Adminler</h2>
+  <div class="space-y-4">
+    {% for u in users %}
+    <form method="post" action="/admin/users/{{ u.id }}/update"
+          class="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 items-center">
+        <input name="full_name" value="{{ u.full_name }}" required
+               class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+        <p class="text-sm text-slate-400 truncate">{{ u.email }}</p>
+        <select name="role"
+                class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+          {% for r in role_options %}
+          <option value="{{ r }}" {% if u.role == r %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input type="checkbox" name="is_active" value="on" {% if u.is_active %}checked{% endif %}
+                   class="rounded border-slate-600 bg-slate-800 text-blue-500">
+            Aktif
+          </label>
+          <input name="new_password" type="password" placeholder="Yeni şifre (opsiyonel)"
+                 class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none w-full">
+        </div>
+        <button type="submit"
+                class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 transition">
+          Kaydet
+        </button>
+      </div>
+      {% if u.last_login_at %}
+      <p class="mt-2 text-xs text-slate-600">Son giriş: {{ u.last_login_at.strftime('%Y-%m-%d %H:%M') }}</p>
+      {% endif %}
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
